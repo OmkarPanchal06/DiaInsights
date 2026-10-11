@@ -31,6 +31,7 @@ export function PlanCard({
 
   const change = changeForFactor(recommendation.factor, patient)
   const small = isSmallEffect(recommendation.score_after - recommendation.current_score)
+  const panelId = `whatif-${recommendation.factor}`
 
   async function run() {
     if (!change) return
@@ -58,7 +59,7 @@ export function PlanCard({
             Small effect on your score
           </span>
         ) : (
-          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-900 tabular-nums">
+          <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-900 tabular-nums dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-100">
             {recommendation.current_score.toFixed(2)} → {recommendation.score_after.toFixed(2)}
           </span>
         )}
@@ -85,7 +86,7 @@ export function PlanCard({
       {change ? (
         <div className="no-print mt-5 border-t border-border pt-4">
           {show ? (
-            <>
+            <div id={panelId}>
               <p className="text-sm text-muted-foreground">
                 If you {changeSummary(recommendation.factor, patient)}:
               </p>
@@ -132,16 +133,20 @@ export function PlanCard({
                 type="button"
                 variant="ghost"
                 className="mt-2 min-h-11"
+                aria-expanded={show}
+                aria-controls={panelId}
                 onClick={() => setShow(false)}
               >
                 Hide
               </Button>
-            </>
+            </div>
           ) : (
             <Button
               type="button"
               variant="outline"
               className="min-h-11"
+              aria-expanded={show}
+              aria-controls={panelId}
               onClick={run}
             >
               What if I {changeSummary(recommendation.factor, patient)}?

@@ -58,3 +58,5 @@ Decision-support only, NOT a diagnosis.
 - Backend: pytest tests for /predict (valid, invalid, edge BMI). Run `pytest` before finishing.
 - Frontend: `npm run lint && npm run build` must pass.
 - After each task, run the app/tests and report what you verified.
+
+- NEVER run git commit or git push unless I explicitly say "commit now". I commit myself.

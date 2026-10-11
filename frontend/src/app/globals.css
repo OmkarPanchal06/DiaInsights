@@ -68,6 +68,13 @@
   --border: oklch(0.90 0.008 210);
   --input: oklch(0.90 0.008 210);
   --ring: oklch(0.55 0.06 215);
+  /* Semantic colours used by the results page. Overridden in .dark so contrast
+     holds in both themes -- verified by scripts/check-contrast.mjs. */
+  --tier-low: #047857;
+  --tier-moderate: #b45309;
+  --tier-high: #be123c;
+  --chart-raises: #c2410c;
+  --chart-lowers: #1d4ed8;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -103,6 +110,12 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
+  /* Lighter variants: the light-mode hexes are near-invisible on a dark card. */
+  --tier-low: #34d399;
+  --tier-moderate: #fbbf24;
+  --tier-high: #fb7185;
+  --chart-raises: #fb923c;
+  --chart-lowers: #60a5fa;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);

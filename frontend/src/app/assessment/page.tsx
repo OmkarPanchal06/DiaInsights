@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, useWatch } from "react-hook-form"
@@ -40,6 +40,17 @@ export default function AssessmentPage() {
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [apiError, setApiError] = useState<ApiError | null>(null)
+  // Screen-reader announcements for validation. A single string, so repeating the
+  // same message twice is ignored rather than re-announced.
+  const [announcement, setAnnouncement] = useState("")
+
+  const headingRef = useRef<HTMLHeadingElement>(null)
+
+  // Move focus to the step heading whenever the step changes, so keyboard and
+  // screen-reader users land in the new step rather than at the top of the page.
+  useEffect(() => {
+    headingRef.current?.focus()
+  }, [step])
 
   const {
     register,
@@ -80,7 +91,16 @@ export default function AssessmentPage() {
     const key = step < TOTAL_STEPS ? STEPS[step].key : "review"
     const fields = STEP_FIELDS[key] ?? []
     const valid = await trigger(fields, { shouldFocus: true })
-    if (!valid) return
+    if (!valid) {
+      const count = fields.filter((field) => fieldErrors[field]).length
+      setAnnouncement(
+        count === 1
+          ? "There is 1 answer to fix on this step."
+          : `There are ${count} answers to fix on this step.`,
+      )
+      return
+    }
+    setAnnouncement("")
     setStep((current) => Math.min(current + 1, REVIEW_INDEX))
   }
 
@@ -95,6 +115,7 @@ export default function AssessmentPage() {
     const allFields = Object.keys(defaultValues) as (keyof FormValues)[]
     const valid = await trigger(allFields, { shouldFocus: true })
     if (!valid) {
+      setAnnouncement("Some answers need fixing. We have taken you back to the first step that needs attention.")
       // Send the user back to the earliest step that has a problem.
       for (let i = 0; i < TOTAL_STEPS; i++) {
         const fields = STEP_FIELDS[STEPS[i].key] ?? []
@@ -128,7 +149,7 @@ export default function AssessmentPage() {
   const stepProps = { values, errors: fieldErrors, setField, validateField, setChoice }
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-5 py-8 sm:py-12">
+    <main id="main" className="mx-auto w-full max-w-2xl px-5 py-8 sm:py-12">
       <div className="mb-8">
         <ProgressBar
           total={TOTAL_STEPS}
@@ -139,13 +160,22 @@ export default function AssessmentPage() {
 
       {/* Focus moves here on every step change so screen readers announce it. */}
       <div aria-live="polite">
-        <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="text-3xl font-semibold tracking-tight text-foreground focus:outline-none sm:text-4xl"
+        >
           {isReview ? "Review your answers" : current?.heading}
         </h1>
         {current?.sub ? (
           <p className="mt-2 text-base text-muted-foreground">{current.sub}</p>
         ) : null}
       </div>
+
+      {/* Validation announcements for screen readers. */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
 
       <div className="mt-8">
         {isReview ? (

@@ -24,7 +24,8 @@ export function TierGauge({ result }: { result: PredictResponse }) {
             className="flex items-center justify-center px-1 text-center"
             style={{
               width: `${zone.widthPct}%`,
-              backgroundColor: `${zone.color}1a`,
+              // color-mix, not `${color}1a`: you cannot append alpha to a var().
+              backgroundColor: `color-mix(in oklab, ${zone.color} 14%, transparent)`,
               borderLeft: zone.from === 0 ? "none" : `1px solid var(--border)`,
             }}
           >
@@ -73,10 +74,14 @@ export function RiskSummary({ result }: { result: PredictResponse }) {
       <div className="mt-5 rounded-xl border border-border bg-card p-6">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
           <span className="text-sm font-medium text-muted-foreground">Risk score</span>
-          <span className="text-5xl font-semibold tabular-nums text-foreground">
+          <span
+            data-testid="risk-score"
+            className="text-5xl font-semibold tabular-nums text-foreground"
+          >
             {result.risk_score.toFixed(2)}
           </span>
           <span
+            data-testid="tier-badge"
             className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-base font-semibold ${meta.badgeClass}`}
           >
             <span
@@ -116,13 +121,13 @@ export function RiskSummary({ result }: { result: PredictResponse }) {
 
       {result.tier === "HIGH" ? (
         <div
-          className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-5 print-card"
+          className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-5 print-card dark:border-rose-800 dark:bg-rose-950/50"
           role="note"
         >
-          <p className="text-base font-semibold text-rose-900">
+          <p className="text-base font-semibold text-rose-900 dark:text-rose-100">
             Next step: ask a doctor about a confirmatory test
           </p>
-          <p className="mt-1 text-base leading-relaxed text-rose-900">
+          <p className="mt-1 text-base leading-relaxed text-rose-900 dark:text-rose-100">
             A high risk score is not a diagnosis. Ask a clinician about a fasting glucose
             or HbA1c test to confirm where you actually stand.
           </p>

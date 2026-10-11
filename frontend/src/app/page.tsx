@@ -7,7 +7,7 @@ import { Disclaimer } from "@/components/disclaimer"
 
 export default function HomePage() {
   return (
-    <main className="mx-auto w-full max-w-3xl px-5 py-12 sm:py-20">
+    <main id="main" className="mx-auto w-full max-w-3xl px-5 py-12 sm:py-20">
       <div className="text-center">
         <h1 className="text-4xl font-semibold tracking-tight text-foreground sm:text-5xl">
           Understand your diabetes risk

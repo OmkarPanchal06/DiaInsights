@@ -13,7 +13,11 @@ import { dirname, join } from "node:path"
 import { bmiCategory } from "../src/lib/bmi"
 import { toPatientInput, type FormValues } from "../src/lib/schema"
 import {
+  GUIDANCE,
   changeForFactor,
+  contradictionKind,
+  contradictsGuidance,
+  contradictionSentence,
   factorSentence,
   isHealthcareFactor,
   isSmallEffect,
@@ -150,6 +154,158 @@ check("LOW zone width = 35", zones[0].widthPct, 35)
 check("MODERATE zone width = 30", zones[1].widthPct, 30)
 check("HIGH zone width = 35", zones[2].widthPct, 35)
 check("tier words", [tierMeta("LOW").word, tierMeta("MODERATE").word, tierMeta("HIGH").word], ["Low", "Moderate", "High"])
+
+// ---- 9. guidance contradiction ---------------------------------------------
+// Verified against the live /predict response for backend/example_request.json:
+// four of the five lifestyle factors point the opposite way to standard guidance.
+check(
+  "HvyAlcoholConsump (No, raises) contradicts guidance",
+  contradictsGuidance("HvyAlcoholConsump", 0, "raises"),
+  true,
+)
+check(
+  "PhysActivity (No, lowers) contradicts guidance",
+  contradictsGuidance("PhysActivity", 0, "lowers"),
+  true,
+)
+check(
+  "Veggies (Yes, raises) contradicts guidance",
+  contradictsGuidance("Veggies", 1, "raises"),
+  true,
+)
+check(
+  "Fruits (No, lowers) contradicts guidance",
+  contradictsGuidance("Fruits", 0, "lowers"),
+  true,
+)
+check(
+  "Smoker (Yes, raises) agrees with guidance -- no contradiction",
+  contradictsGuidance("Smoker", 1, "raises"),
+  false,
+)
+check(
+  "non-lifestyle factor never contradicts",
+  contradictsGuidance("HighBP", 1, "lowers"),
+  false,
+)
+
+// Sentence variants for each flavour are covered in section 10 below.
+check(
+  "every factor has its own tailored note",
+  new Set(Object.values(GUIDANCE).map((g) => g.note)).size,
+  Object.keys(GUIDANCE).length,
+)
+check(
+  "contradiction wording never says 'slightly' (it would understate the effect)",
+  /slightly/i.test(
+    Object.keys(GUIDANCE)
+      .flatMap((k) => [
+        contradictionSentence(k, 1, "raises", true),
+        contradictionSentence(k, 0, "raises", true),
+        contradictionSentence(k, 1, "lowers", true),
+        contradictionSentence(k, 0, "lowers", true),
+      ])
+      .join(" "),
+  ),
+  false,
+)
+
+// ---- 10. already-healthy answers must not be told to change ---------------
+// Verified against backend/example_request.json: HvyAlcoholConsump=No and
+// Veggies=Yes are the healthy answers; PhysActivity=No and Fruits=No are not.
+check(
+  "HvyAlcoholConsump (No) is 'already-healthy'",
+  contradictionKind("HvyAlcoholConsump", 0, "raises"),
+  "already-healthy",
+)
+check(
+  "Veggies (Yes) is 'already-healthy'",
+  contradictionKind("Veggies", 1, "raises"),
+  "already-healthy",
+)
+check(
+  "PhysActivity (No) is 'could-improve'",
+  contradictionKind("PhysActivity", 0, "lowers"),
+  "could-improve",
+)
+check(
+  "Fruits (No) is 'could-improve'",
+  contradictionKind("Fruits", 0, "lowers"),
+  "could-improve",
+)
+check(
+  "Smoker (Yes, raises) has no contradiction at all",
+  contradictionKind("Smoker", 1, "raises"),
+  null,
+)
+
+const healthyFull = contradictionSentence("HvyAlcoholConsump", 0, "raises", true)
+check(
+  "already-healthy acknowledges the answer",
+  healthyFull.includes("You already reported the healthy answer here."),
+  true,
+)
+check(
+  "already-healthy full form carries the reassurance",
+  healthyFull.includes("This is a statistical pattern, not advice."),
+  true,
+)
+check(
+  "already-healthy never suggests changing it",
+  healthyFull.includes(GUIDANCE.HvyAlcoholConsump.note),
+  false,
+)
+check(
+  "already-healthy short form is just the acknowledgement",
+  contradictionSentence("Veggies", 1, "raises", false),
+  "You already reported the healthy answer here.",
+)
+check(
+  "already-healthy wording is free of imperative advice",
+  /recommended|you should|try to|aim to|start/i.test(
+    contradictionSentence("HvyAlcoholConsump", 0, "raises", true) +
+      contradictionSentence("Veggies", 1, "raises", false),
+  ),
+  false,
+)
+
+const improveFull = contradictionSentence("PhysActivity", 0, "lowers", true)
+check(
+  "could-improve keeps its tailored guidance",
+  improveFull.includes(GUIDANCE.PhysActivity.note),
+  true,
+)
+check(
+  "could-improve full form states the shift and the reassurance",
+  improveFull.includes("shifts the model's score down") &&
+    improveFull.includes("This is a statistical pattern, not advice."),
+  true,
+)
+check(
+  "could-improve short form keeps the guidance note",
+  contradictionSentence("Fruits", 0, "lowers", false),
+  GUIDANCE.Fruits.note,
+)
+
+check(
+  "no contradiction wording claims causation",
+  /caus|increases your chance|leads to|worsens|prevents/i.test(
+    Object.keys(GUIDANCE)
+      .flatMap((k) => [
+        contradictionSentence(k, 1, "raises", true),
+        contradictionSentence(k, 0, "raises", true),
+        contradictionSentence(k, 1, "lowers", true),
+        contradictionSentence(k, 0, "lowers", true),
+      ])
+      .join(" "),
+  ),
+  false,
+)
+check(
+  "no contradiction wording says 'slightly' (it would understate the effect)",
+  contradictionSentence("HvyAlcoholConsump", 0, "raises", true).includes("slightly"),
+  false,
+)
 
 console.log(failures === 0 ? "\nFrontend/backend parity holds." : `\n${failures} check(s) failed.`)
 process.exit(failures === 0 ? 0 : 1)

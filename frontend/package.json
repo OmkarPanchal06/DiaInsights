@@ -11,6 +11,7 @@
     "check:parity": "node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/check-parity.mts",
     "check:errors": "node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/check-errors.mts",
     "check:whatif": "node --experimental-strip-types --import ./scripts/register-ts.mjs scripts/check-whatif-e2e.mts",
+    "test:e2e": "node scripts/check-e2e-ports.mjs && playwright test",
     "check": "npm run lint && npm run check:contrast && npm run check:parity && npm run check:errors"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "cn": "^0.4.0",
     "lucide-react": "^1.55.0",
     "next": "16.4.0",
+    "next-themes": "^0.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hook-form": "^7.89.0",
@@ -29,6 +31,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

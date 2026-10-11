@@ -7,6 +7,7 @@ import {
   CartesianGrid,
   Cell,
   ResponsiveContainer,
+  ReferenceLine,
   Tooltip,
   XAxis,
   YAxis,
@@ -14,13 +15,24 @@ import {
 import { Minus, TrendingDown, TrendingUp } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import type { PredictResponse } from "@/lib/api"
-import { factorSentence, isHealthcareFactor } from "@/lib/whatif"
+import type { PatientInput, PredictResponse } from "@/lib/api"
+import {
+  contradictionKind,
+  contradictionSentence,
+  factorSentence,
+  isHealthcareFactor,
+} from "@/lib/whatif"
 import { LOWERS_COLOR, RAISES_COLOR } from "@/lib/tier"
 
 type Feature = PredictResponse["shap"]["features"][number]
 
 const DEFAULT_COUNT = 5
+
+/** Shown above the chart. Explain what the numbers are, and are not. */
+const CHART_NOTE =
+  "This chart shows how the model weighs your answers, based on patterns in survey data. " +
+  "It does not show what causes diabetes. Some factors may look surprising, and you should " +
+  "never stop a healthy habit because of this chart."
 
 function DirectionIcon({ direction }: { direction: Feature["direction"] }) {
   if (direction === "raises") {
@@ -56,7 +68,37 @@ function ChartTooltip({
   )
 }
 
-export function ShapChart({ shap }: { shap: PredictResponse["shap"] }) {
+/**
+ * Legend. Mirrors the bars exactly: colour PLUS icon PLUS word, so the meaning
+ * survives for a reader who cannot distinguish the two hues.
+ */
+function ChartLegend() {
+  return (
+    <ul className="flex flex-wrap items-center gap-x-6 gap-y-2">
+      <li className="flex items-center gap-2 text-sm text-foreground">
+        <span style={{ color: RAISES_COLOR }}>
+          <TrendingUp aria-hidden="true" className="size-4" />
+        </span>
+        Pushes your score up
+      </li>
+      <li className="flex items-center gap-2 text-sm text-foreground">
+        <span style={{ color: LOWERS_COLOR }}>
+          <TrendingDown aria-hidden="true" className="size-4" />
+        </span>
+        Pushes your score down
+      </li>
+    </ul>
+  )
+}
+
+export function ShapChart({
+  shap,
+  patient,
+}: {
+  shap: PredictResponse["shap"]
+  /** Needed to tell whether a direction contradicts guidance for the given answer. */
+  patient: PatientInput
+}) {
   const [showAll, setShowAll] = useState(false)
 
   // Healthcare access is a model input but not a health condition or habit, so it is
@@ -66,6 +108,16 @@ export function ShapChart({ shap }: { shap: PredictResponse["shap"] }) {
   const shown = showAll ? visible : visible.slice(0, DEFAULT_COUNT)
 
   const maxAbs = Math.max(...visible.map((f) => Math.abs(f.impact)), 0.01)
+
+  /**
+   * The kind of each contradiction in display order, so the render loop can tell
+   * whether it is the first of its kind. Computed up front rather than per item so
+   * each row stays a pure function of its own feature.
+   */
+  const kinds = shown.map((f) => {
+    const v = Number(patient[f.name as keyof PatientInput] ?? 0)
+    return contradictionKind(f.name, v, f.direction)
+  })
   const domain: [number, number] = [-maxAbs * 1.15, maxAbs * 1.15]
 
   const summary = `Bar chart of the ${shown.length} largest contributors to your risk score. ` +
@@ -83,6 +135,17 @@ export function ShapChart({ shap }: { shap: PredictResponse["shap"] }) {
         Each bar shows how much that factor moves your risk score, up or down. Bars to the
         right push it up; bars to the left pull it down.
       </p>
+
+      <div
+        data-testid="chart-note"
+        className="mt-4 rounded-lg border border-border bg-muted p-4 text-base leading-relaxed text-foreground"
+      >
+        {CHART_NOTE}
+      </div>
+
+      <div className="mt-4">
+        <ChartLegend />
+      </div>
 
       <div
         className="mt-6 rounded-xl border border-border bg-card p-4 print-card"
@@ -124,32 +187,47 @@ export function ShapChart({ shap }: { shap: PredictResponse["shap"] }) {
                 />
               ))}
             </Bar>
+            {/* Zero line: without it a diverging chart has no visible pivot between
+                "pushes up" and "pushes down". */}
+            <ReferenceLine x={0} stroke="var(--foreground)" strokeWidth={1.5} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Text equivalent of the chart. Also the accessible description of each bar. */}
-      <ul className="mt-6 space-y-3">
-        {shown.map((feature) => (
-          <li
-            key={feature.name}
-            className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 print-card"
-          >
-            <span style={{ color: feature.direction === "raises" ? RAISES_COLOR : LOWERS_COLOR }}>
-              <DirectionIcon direction={feature.direction} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-base font-medium text-foreground">
-                {feature.label} — {feature.value_display}
-              </p>
-              <p className="text-sm text-muted-foreground">{factorSentence(feature)}</p>
-              <p className="text-sm tabular-nums text-muted-foreground">
-                {feature.direction === "raises" ? "Raises" : "Lowers"} by{" "}
-                {Math.abs(feature.impact).toFixed(3)}
-              </p>
-            </div>
-          </li>
-        ))}
+      <ul data-testid="factor-list" className="mt-6 space-y-3">
+        {shown.map((feature, index) => {
+          const value = Number(patient[feature.name as keyof PatientInput] ?? 0)
+          const kind = kinds[index]
+          // The reassurance goes to the first contradiction of each kind, so an
+          // "already-healthy" entry cannot use it up ahead of a "could-improve" one.
+          const isFirstOfKind = kind !== null && !kinds.slice(0, index).includes(kind)
+
+          return (
+            <li
+              key={feature.name}
+              className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 print-card"
+            >
+              <span style={{ color: feature.direction === "raises" ? RAISES_COLOR : LOWERS_COLOR }}>
+                <DirectionIcon direction={feature.direction} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-medium text-foreground">
+                  {feature.label} — {feature.value_display}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {kind
+                    ? contradictionSentence(feature.name, value, feature.direction, isFirstOfKind)
+                    : factorSentence(feature)}
+                </p>
+                <p className="text-sm tabular-nums text-muted-foreground">
+                  {feature.direction === "raises" ? "Raises" : "Lowers"} by{" "}
+                  {Math.abs(feature.impact).toFixed(3)}
+                </p>
+              </div>
+            </li>
+          )
+        })}
       </ul>
 
       {visible.length > DEFAULT_COUNT ? (

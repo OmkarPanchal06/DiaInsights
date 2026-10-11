@@ -17,7 +17,7 @@ export default function ResultsPage() {
   // Result state is in memory only, so a refresh or a pasted URL lands here empty.
   if (!assessment) {
     return (
-      <main className="mx-auto w-full max-w-2xl px-5 py-16">
+      <main id="main" className="mx-auto w-full max-w-2xl px-5 py-16">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
           No results to show
         </h1>
@@ -48,7 +48,7 @@ export default function ResultsPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-5 py-12">
+    <main id="main" className="mx-auto w-full max-w-3xl px-5 py-12">
       <div className="no-print mb-6 flex flex-wrap gap-3">
         <Button type="button" variant="outline" className="min-h-11" onClick={() => window.print()}>
           <Printer aria-hidden="true" className="size-4" />
@@ -62,7 +62,7 @@ export default function ResultsPage() {
 
       <div className="space-y-12">
         <RiskSummary result={response} />
-        <ShapChart shap={response.shap} />
+        <ShapChart shap={response.shap} patient={patient} />
         <PersonalisedPlan result={response} patient={patient} />
         <MedicalSection result={response} />
       </div>

@@ -40,9 +40,9 @@ function hexToLinearRgb(hex) {
 }
 
 const T = {
-  // Chart and badge colours (from src/lib/tier.ts)
-  raises: hexToLinearRgb("#be123c"),
-  lowers: hexToLinearRgb("#047857"),
+  // Chart and badge colours, LIGHT theme (from :root in globals.css)
+  raises: hexToLinearRgb("#c2410c"),
+  lowers: hexToLinearRgb("#1d4ed8"),
   tierHigh: hexToLinearRgb("#be123c"),
   tierModerate: hexToLinearRgb("#b45309"),
   tierLow: hexToLinearRgb("#047857"),
@@ -80,8 +80,56 @@ const pairs = [
   ["HIGH tier colour on card", "tierHigh", "card", 3],
   ["MODERATE tier colour on card", "tierModerate", "card", 3],
   ["LOW tier colour on card", "tierLow", "card", 3],
+  // LOWERS_COLOR is also used as TEXT (what-if delta, combined score) on bg-muted,
+  // so it needs the 4.5:1 text threshold rather than the 3:1 graphical one.
+  ["lowers colour as text on muted", "lowers", "muted", 4.5],
 ]
 
+// ---- dark theme -------------------------------------------------------------
+// The light hexes are near-invisible on a dark card, so globals.css supplies
+// lighter variants in .dark. Those need the same treatment.
+const D = {
+  background: oklchToLinearRgb(0.145, 0, 0),
+  foreground: oklchToLinearRgb(0.985, 0, 0),
+  card: oklchToLinearRgb(0.205, 0, 0),
+  muted: oklchToLinearRgb(0.269, 0, 0),
+  mutedFg: oklchToLinearRgb(0.708, 0, 0),
+  primary: oklchToLinearRgb(0.922, 0, 0),
+  primaryFg: oklchToLinearRgb(0.205, 0, 0),
+  destructive: oklchToLinearRgb(0.704, 0.191, 22.216),
+  raises: hexToLinearRgb("#fb923c"),
+  lowers: hexToLinearRgb("#60a5fa"),
+  tierHigh: hexToLinearRgb("#fb7185"),
+  tierModerate: hexToLinearRgb("#fbbf24"),
+  tierLow: hexToLinearRgb("#34d399"),
+}
+
+const darkPairs = [
+  ["body text on page", "foreground", "background", 4.5],
+  ["body text on card", "foreground", "card", 4.5],
+  ["muted text on page", "mutedFg", "background", 4.5],
+  ["muted text on card", "mutedFg", "card", 4.5],
+  ["primary button label", "primaryFg", "primary", 4.5],
+  ["error text on card", "destructive", "card", 4.5],
+  ["raises bar on card", "raises", "card", 3],
+  ["lowers bar on card", "lowers", "card", 3],
+  ["HIGH tier colour on card", "tierHigh", "card", 3],
+  ["MODERATE tier colour on card", "tierModerate", "card", 3],
+  ["LOW tier colour on card", "tierLow", "card", 3],
+  ["lowers colour as text on muted", "lowers", "muted", 4.5],
+]
+
+console.log("\n--- dark theme ---")
+for (const [label, fg, bg, min] of darkPairs) {
+  const r = ratio(D[fg], D[bg])
+  const pass = r >= min
+  if (!pass) failed++
+  console.log(
+    `${pass ? "PASS" : "FAIL"}  ${r.toFixed(2).padStart(6)}:1  (min ${min})  ${label}`,
+  )
+}
+
+console.log("--- light theme ---")
 let failed = 0
 for (const [label, fg, bg, min] of pairs) {
   const r = ratio(T[fg], T[bg])
