@@ -2,33 +2,46 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react"
 
-import type { PredictResponse } from "@/lib/api"
+import type { PatientInput, PredictResponse } from "@/lib/api"
+
+export interface Assessment {
+  /** The answers as sent to /predict. Needed by /predict/whatif. */
+  patient: PatientInput
+  response: PredictResponse
+}
 
 interface ResultContextValue {
-  result: PredictResponse | null
-  setResult: (result: PredictResponse) => void
+  assessment: Assessment | null
+  setResult: (patient: PatientInput, response: PredictResponse) => void
   clearResult: () => void
 }
 
 const ResultContext = createContext<ResultContextValue | null>(null)
 
 /**
- * Holds the /predict response in memory only.
+ * Holds the answers and the /predict response in memory only.
  *
  * Deliberately NOT persisted: no localStorage, no cookies, no server session, so the
  * answers are gone when the tab closes. The trade-off is that a hard refresh or a
  * pasted /results URL loses the result -- /results handles that with a friendly
  * "start again" state rather than a crash.
+ *
+ * Keeping the patient input here is what lets /results call /predict/whatif without
+ * asking the user to re-enter anything.
  */
 export function ResultProvider({ children }: { children: ReactNode }) {
-  const [result, setResultState] = useState<PredictResponse | null>(null)
+  const [assessment, setAssessment] = useState<Assessment | null>(null)
 
-  const setResult = useCallback((next: PredictResponse) => setResultState(next), [])
-  const clearResult = useCallback(() => setResultState(null), [])
+  const setResult = useCallback(
+    (patient: PatientInput, response: PredictResponse) =>
+      setAssessment({ patient, response }),
+    [],
+  )
+  const clearResult = useCallback(() => setAssessment(null), [])
 
   const value = useMemo(
-    () => ({ result, setResult, clearResult }),
-    [result, setResult, clearResult],
+    () => ({ assessment, setResult, clearResult }),
+    [assessment, setResult, clearResult],
   )
 
   return <ResultContext.Provider value={value}>{children}</ResultContext.Provider>

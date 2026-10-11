@@ -31,7 +31,21 @@ const ratio = (x, y) => {
   return (hi + 0.05) / (lo + 0.05)
 }
 
+// Hex literals are gamma-encoded sRGB, so linearise before the luminance formula.
+function hexToLinearRgb(hex) {
+  const n = Number.parseInt(hex.replace("#", ""), 16)
+  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255].map((c) =>
+    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4),
+  )
+}
+
 const T = {
+  // Chart and badge colours (from src/lib/tier.ts)
+  raises: hexToLinearRgb("#be123c"),
+  lowers: hexToLinearRgb("#047857"),
+  tierHigh: hexToLinearRgb("#be123c"),
+  tierModerate: hexToLinearRgb("#b45309"),
+  tierLow: hexToLinearRgb("#047857"),
   background: oklchToLinearRgb(0.99, 0.004, 210),
   foreground: oklchToLinearRgb(0.2, 0.015, 220),
   card: oklchToLinearRgb(1, 0, 0),
@@ -59,6 +73,13 @@ const pairs = [
   ["error text on card", "destructive", "card", 4.5],
   ["error text on muted field", "destructive", "muted", 4.5],
   ["focus ring vs page", "primary", "background", 3],
+  // Chart and badge colours on the white card surface. WCAG 1.4.11 non-text contrast
+  // requires 3:1 for graphical objects such as bars and gauges.
+  ["raises bar on card", "raises", "card", 3],
+  ["lowers bar on card", "lowers", "card", 3],
+  ["HIGH tier colour on card", "tierHigh", "card", 3],
+  ["MODERATE tier colour on card", "tierModerate", "card", 3],
+  ["LOW tier colour on card", "tierLow", "card", 3],
 ]
 
 let failed = 0

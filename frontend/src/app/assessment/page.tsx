@@ -108,8 +108,9 @@ export default function AssessmentPage() {
 
     setSubmitting(true)
     try {
-      const response = await predict(toPatientInput(getValues()))
-      setResult(response)
+      const patient = toPatientInput(getValues())
+      const response = await predict(patient)
+      setResult(patient, response)
       router.push("/results")
     } catch (error) {
       setApiError(

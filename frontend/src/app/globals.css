@@ -129,3 +129,47 @@
     @apply font-sans;
   }
 }
+
+/* ------------------------------------------------------- print / save as PDF */
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Interactive controls have no meaning on paper. */
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* Keep cards and sections whole rather than splitting across a page. */
+  .print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    border-color: #cccccc !important;
+  }
+
+  /* Tier and bar colours are the point of the document; do not strip them. */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}

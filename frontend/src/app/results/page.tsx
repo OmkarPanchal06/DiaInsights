@@ -1,23 +1,21 @@
 "use client"
 
-import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Printer, RotateCcw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { Disclaimer } from "@/components/disclaimer"
+import { RiskSummary } from "@/components/results/risk-summary"
+import { ShapChart } from "@/components/results/shap-chart"
+import { MedicalSection, PersonalisedPlan } from "@/components/results/personalised-plan"
 import { useResult } from "@/providers/result-provider"
 
-const TIER_TEXT: Record<string, string> = {
-  LOW: "Low risk",
-  MODERATE: "Moderate risk",
-  HIGH: "High risk",
-}
-
 export default function ResultsPage() {
-  const { result } = useResult()
+  const router = useRouter()
+  const { assessment, clearResult } = useResult()
 
   // Result state is in memory only, so a refresh or a pasted URL lands here empty.
-  if (!result) {
+  if (!assessment) {
     return (
       <main className="mx-auto w-full max-w-2xl px-5 py-16">
         <h1 className="text-3xl font-semibold tracking-tight text-foreground">
@@ -28,7 +26,7 @@ export default function ResultsPage() {
           leave or refresh the page. Start the assessment again to get a new score.
         </p>
         <Button
-          render={<Link href="/assessment" />}
+          render={<a href="/assessment" />}
           nativeButton={false}
           size="lg"
           className="mt-8 min-h-14"
@@ -42,33 +40,36 @@ export default function ResultsPage() {
     )
   }
 
+  const { patient, response } = assessment
+
+  function startOver() {
+    clearResult()
+    router.push("/assessment")
+  }
+
   return (
-    <main className="mx-auto w-full max-w-2xl px-5 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-        Your risk score
-      </h1>
-
-      <Card className="mt-6">
-        <CardContent className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Risk score</p>
-          <p className="text-5xl font-semibold tabular-nums text-foreground">
-            {result.risk_score.toFixed(2)}
-          </p>
-          {/* Tier stated as words, never colour alone. */}
-          <p className="text-lg font-medium text-foreground">
-            {TIER_TEXT[result.tier] ?? result.tier}
-          </p>
-        </CardContent>
-      </Card>
-
-      <p className="mt-8 text-base text-muted-foreground">
-        This is a placeholder. The full results page — the factors behind your score,
-        your personalised plan and the what-if tool — comes next.
-      </p>
-
-      <div className="mt-10">
-        <Disclaimer />
+    <main className="mx-auto w-full max-w-3xl px-5 py-12">
+      <div className="no-print mb-6 flex flex-wrap gap-3">
+        <Button type="button" variant="outline" className="min-h-11" onClick={() => window.print()}>
+          <Printer aria-hidden="true" className="size-4" />
+          Print / save as PDF
+        </Button>
+        <Button type="button" variant="outline" className="min-h-11" onClick={startOver}>
+          <RotateCcw aria-hidden="true" className="size-4" />
+          Start over
+        </Button>
       </div>
+
+      <div className="space-y-12">
+        <RiskSummary result={response} />
+        <ShapChart shap={response.shap} />
+        <PersonalisedPlan result={response} patient={patient} />
+        <MedicalSection result={response} />
+      </div>
+
+      <footer className="mt-14 border-t border-border pt-6">
+        <Disclaimer />
+      </footer>
     </main>
   )
 }
