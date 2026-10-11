@@ -36,20 +36,60 @@ _origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:30
 app.add_middleware(CORSMiddleware, allow_origins=_origins, allow_credentials=False,
                    allow_methods=["GET", "POST"], allow_headers=["*"])
 
+# ---------------------------------------------------------------- helpers
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read an int from the environment, falling back on malformed input rather
+    than crashing the service at import time."""
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 # ------------------------------------------------------- rate limiting
 # Stores client IP and timestamps only. Never the request body -- AGENTS.md forbids
 # logging patient health data.
-RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+RATE_LIMIT_PER_MINUTE = _env_int("RATE_LIMIT_PER_MINUTE", 60)
 _RATE_WINDOW = 60.0
 _hits: dict[str, deque] = defaultdict(deque)
 _rate_lock = threading.Lock()
+
+
+# Off by default. Behind a reverse proxy every client shares the proxy's address, so
+# the limiter would treat all users as one person and cap the whole site at
+# RATE_LIMIT_PER_MINUTE. Turn this on ONLY when a proxy you control sits in front and
+# overwrites (rather than appends to) X-Forwarded-For.
+TRUST_PROXY_HEADERS = _env_flag("TRUST_PROXY_HEADERS")
+# How many proxies sit in front of us. 1 = a single reverse proxy.
+FORWARDED_TRUSTED_HOPS = max(1, _env_int("FORWARDED_TRUSTED_HOPS", 1))
+
+
+def client_ip(request: Request) -> str:
+    """Resolve the rate-limit key.
+
+    X-Forwarded-For is consulted only when TRUST_PROXY_HEADERS is enabled, and it is
+    counted from the RIGHT: with N trusted proxies the Nth entry from the right was
+    appended by our own infrastructure. Everything to its left is client-supplied and
+    must never influence the key, or a caller could forge a header and mint an
+    unlimited number of buckets.
+    """
+    if TRUST_PROXY_HEADERS:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        parts = [item.strip() for item in forwarded.split(",") if item.strip()]
+        if len(parts) >= FORWARDED_TRUSTED_HOPS:
+            return parts[-FORWARDED_TRUSTED_HOPS]
+    return request.client.host if request.client else "unknown"
 
 
 def enforce_rate_limit(request: Request):
     if RATE_LIMIT_PER_MINUTE <= 0:
         return
     now = time.monotonic()
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
     with _rate_lock:
         bucket = _hits[ip]
         while bucket and now - bucket[0] > _RATE_WINDOW:
