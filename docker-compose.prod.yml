@@ -1,0 +1,60 @@
+# Production overlay. Use with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Passing -f means docker-compose.override.yml is NOT loaded, so the local dev port
+# mappings stay out of it. Caddy is the only service that publishes anything.
+#
+# Set DOMAIN to your real hostname before deploying:
+#
+#   DOMAIN=diainsights.example.com docker compose \
+#     -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Defaults to localhost so you can rehearse the production topology on your machine:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+
+services:
+  backend:
+    environment:
+      # Caddy sits in front and REWRITES X-Forwarded-For instead of appending to a
+      # client-supplied one, so trusting it is safe. The API counts the header from the
+      # right, so a forged client-supplied entry cannot mint extra rate-limit buckets.
+      # Without this, every visitor would share Caddy's IP and the whole site would be
+      # capped at RATE_LIMIT_PER_MINUTE.
+      TRUST_PROXY_HEADERS: "1"
+      FORWARDED_TRUSTED_HOPS: "1"
+      # Same-origin in production: Caddy serves the frontend and routes /api/* here,
+      # so there is no separate browser origin to allow.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://localhost}
+
+  frontend:
+    build:
+      args:
+        # Overrides the base value. Must match the Caddyfile routing below, which
+        # strips the /api prefix before forwarding.
+        NEXT_PUBLIC_API_URL: https://${DOMAIN:-localhost}/api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      # Read by the Caddyfile as {$DOMAIN}.
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and ACME state MUST persist, or Caddy re-requests on every
+      # restart and can hit Let's Encrypt rate limits.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  caddy_data:
+  caddy_config:

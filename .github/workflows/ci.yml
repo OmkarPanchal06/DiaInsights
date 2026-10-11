@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Matches the local venv (3.13.2) and backend/Dockerfile, so CI exercises the
+      # same Python the pinned ML wheels were verified against.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest httpx
+
+      - name: Verify the pinned wheels install on this Python
+        run: python -c "import xgboost, shap, sklearn, pandas, numpy, scipy; print('ML stack imports OK')"
+
+      - name: Run tests
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend lint, build and checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      # Contrast (both themes), backend parity and error handling. All offline.
+      # `check:whatif` is deliberately excluded: it needs a running backend.
+      - name: Static checks
+        run: npm run check
+
+      - name: Upload screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: frontend/test-results
+          retention-days: 7
+
+  compose-policy:
+    name: Compose port policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only Caddy may publish a port in the production topology. The backend and
+      # frontend carry no host ports, so a health-data service can never be exposed
+      # by accident. This fails the build if that invariant is broken.
+      - name: Assert only Caddy publishes ports
+        env:
+          DOMAIN: example.com
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config \
+            --format json > /tmp/compose.json
+
+          echo "Services in the production topology:"
+          node -e '
+            const cfg = require("/tmp/compose.json");
+            const services = Object.entries(cfg.services || {});
+            for (const [name, svc] of services) {
+              const ports = svc.ports || [];
+              console.log(`  ${name}: ${ports.length ? ports.map(p => `${p.published}:${p.target}/${p.protocol ?? "tcp"}`).join(", ") : "(no published ports)"}`);
+            }
+
+            let failed = false;
+            for (const [name, svc] of services) {
+              const ports = svc.ports || [];
+              if (name === "caddy") {
+                if (ports.length === 0) {
+                  console.error("FAIL: caddy publishes no ports; the proxy would be unreachable.");
+                  failed = true;
+                }
+                continue;
+              }
+              if (ports.length > 0) {
+                console.error(`FAIL: ${name} publishes ${ports.length} port(s); only caddy may.`);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+            console.log("OK: only caddy publishes ports.");
+          '
+
+      # Proves the local dev overlay is not loaded when -f is used, which is what
+      # keeps 127.0.0.1:8000 and :3000 out of production.
+      - name: Assert the dev override is not auto-loaded with -f
+        env:
+          DOMAIN: example.com
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml config \
+            --format json > /tmp/prod.json
+          docker compose config --format json > /tmp/dev.json
+
+          node -e '
+            const prod = require("/tmp/prod.json");
+            const dev  = require("/tmp/dev.json");
+            const devPorts = (cfg, svc) => ((cfg.services?.[svc]?.ports) || []).length;
+
+            if (devPorts(dev, "backend") === 0 || devPorts(dev, "frontend") === 0) {
+              console.error("FAIL: plain `docker compose config` should auto-load docker-compose.override.yml and publish dev ports.");
+              process.exit(1);
+            }
+            if (devPorts(prod, "backend") !== 0 || devPorts(prod, "frontend") !== 0) {
+              console.error("FAIL: the production config picked up dev ports; -f must suppress docker-compose.override.yml.");
+              process.exit(1);
+            }
+            console.log("OK: dev override auto-loads locally and is excluded in production.");
+          '
+
+      # The Caddyfile is only syntax-checked, never started: `caddy validate` needs no
+      # domain resolution or certificate issuance.
+      - name: Validate the Caddyfile
+        run: docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" -e DOMAIN=example.com caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+
+# End-to-end tests are intentionally not run here. They start both servers and
+# download Chromium, which is slow and flaky as a per-push gate. Run them locally
+# with `npm run test:e2e`, or add a separate job on a schedule or before release.

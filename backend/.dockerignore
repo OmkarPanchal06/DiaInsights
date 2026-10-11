@@ -1,0 +1,36 @@
+# Keep the build context small and make sure nothing local leaks into the image.
+# NOTE: model/ is deliberately NOT ignored -- it is the trained model the service
+# serves, and is committed source-of-truth data.
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Tests and tooling
+tests/
+call_example.py
+example_request.json
+*.md
+
+# Secrets / local config
+.env
+.env.*
+!.env.example
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose*.yml

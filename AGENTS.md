@@ -10,10 +10,11 @@ Decision-support only, NOT a diagnosis.
 ## Structure
 - backend/  FastAPI + XGBoost + SHAP (existing, working).
   Run: `cd backend && venv\Scripts\Activate.ps1 && uvicorn api:app --reload --port 8000`
-  Test: `cd backend && venv\Scripts\python -m pytest -q`  (61 tests; must stay green)
+  Test: `cd backend && venv\Scripts\python -m pytest -q`  (79 tests; must stay green)
   Endpoints: `POST /predict` (?include_plot=true), `POST /predict/whatif`, `GET /health`.
   Env: `ALLOWED_ORIGINS` (comma-separated, default http://localhost:3000),
-       `RATE_LIMIT_PER_MINUTE` (default 60, per-IP, /health exempt, 0 disables).
+       `RATE_LIMIT_PER_MINUTE` (default 60, per-IP, /health exempt, 0 disables),
+       `TRUST_PROXY_HEADERS` (default off), `FORWARDED_TRUSTED_HOPS` (default 1).
 - frontend/ Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Recharts (to be created).
   Run: `cd frontend && npm run dev`
 
@@ -36,6 +37,31 @@ Decision-support only, NOT a diagnosis.
 - Do not log or print patient health data. No third-party analytics.
 - Frontend: mobile-first, WCAG AA contrast, keyboard accessible, labels on every input,
   never rely on colour alone. Plain language; explain medical terms in tooltips.
+
+## Deployment
+- Compose files: `docker-compose.yml` is production-shaped and publishes **no** host
+  ports on backend/frontend; `docker-compose.override.yml` adds 127.0.0.1 ports for local
+  dev and is auto-loaded only when no `-f` is passed; `docker-compose.prod.yml` adds
+  Caddy, the only service publishing 80/443.
+- Local: `docker compose up --build`. Production:
+  `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`.
+  Deploy docs, Caddy, HTTPS and Fly.io alternative: **DEPLOY.md**.
+- `Caddyfile` routes `handle_path /api/*` to `backend:8000`, stripping the prefix so the
+  backend sees `/predict`. `DOMAIN` drives both it and the production build arg.
+- **Docker and CI both use Python 3.13** to match `backend/venv` (3.13.2), which is the
+  version the pinned ML wheels were verified against.
+- **`NEXT_PUBLIC_API_URL` is inlined at build time.** It must be passed as a Docker
+  *build arg*, not a runtime env var, and it must be a URL the **browser** can resolve.
+  `http://backend:8000` builds fine and then fails in the browser.
+- **uicorn runs with `--workers 1` on purpose**: the rate limiter is an in-memory dict,
+  so N workers means N independent limiters and N× the effective limit. Move the
+  limiter to Redis before raising it.
+- uvicorn runs with `--no-proxy-headers`. Its own handling rewrites `request.client.host`
+  from the **leftmost** X-Forwarded-For entry, which would bypass `api.client_ip()` and
+  let a caller forge their rate-limit bucket. Do not remove this flag.
+- `api.client_ip()` reads X-Forwarded-For **from the right**, and only when
+  `TRUST_PROXY_HEADERS` is on (default off). Entries left of our own proxy's entry are
+  client-supplied and must never influence the key.
 
 ## Backend notes
 - Never change `backend/model/` or the maths in `diabetes_pipeline.py` (`preprocess`,

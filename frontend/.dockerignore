@@ -1,0 +1,32 @@
+# Keep the build context small and stop local artefacts leaking into the image.
+
+# Dependencies (reinstalled inside the image via `npm ci`)
+node_modules
+.pnpm-store
+
+# Build output (rebuilt inside the image)
+.next
+out
+build
+
+# Test artefacts
+test-results
+playwright-report
+blob-report
+playwright/.cache
+coverage
+
+# Secrets and local config. NEXT_PUBLIC_API_URL arrives as a build ARG, not a file.
+.env
+.env.*
+!.env.example
+next-env.d.ts
+
+# VCS
+.git
+.gitignore
+
+# Docs and local config
+*.md
+Dockerfile
+.dockerignore

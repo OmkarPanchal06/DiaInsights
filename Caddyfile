@@ -1,0 +1,43 @@
+# DiaInsights reverse proxy.
+#
+# DOMAIN is supplied by docker-compose.prod.yml from the host environment:
+#   DOMAIN=diainsights.example.com docker compose \
+#     -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# With DOMAIN=localhost, Caddy issues its own internal certificate. Browsers will
+# warn once, which is expected for a local rehearsal of the production topology.
+#
+# Caddy is the only service that publishes a port. The backend and frontend are
+# reachable on the internal docker network only.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# handle_path strips the matched prefix before proxying. The browser calls
+	# /api/predict; Caddy forwards /predict, which is the route the backend serves.
+	# Using `handle` here instead would leave the /api prefix on and 404 every call.
+	handle_path /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	header {
+		# The frontend sets these too; Caddy adds them for anything that reaches it
+		# directly and strips the server banner.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		# Access logs record the request line and status only -- never a body.
+		# Default format already excludes headers and bodies; named explicitly here so
+		# nobody "helpfully" adds them later.
+		output stdout
+		format console
+	}
+}

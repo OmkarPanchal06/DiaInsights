@@ -1,0 +1,66 @@
+# DiaInsights - base topology.
+#
+# This file deliberately publishes NO host ports on the backend or frontend. That is
+# the safe default: the base file is deliberately production-shaped and fails closed: a
+# mistaken `docker compose up` on a server brings the app up reachable only from that
+# server's localhost (via docker-compose.override.yml), never from the network, rather
+# than exposing a health-data service to the internet.
+#
+#   Local dev   -> docker compose up
+#                  (auto-loads docker-compose.override.yml, which adds 127.0.0.1 ports)
+#   Production  -> docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#                  (adds Caddy, the only service that publishes 80/443)
+#
+# Note: passing -f disables automatic loading of docker-compose.override.yml, so the
+# production command never picks up the dev port mappings.
+
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      # The browser talks to the frontend, so that is the origin the API must accept.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      # Off by default. Behind a proxy every client shares the proxy's address, so the
+      # limiter would treat all visitors as one person and cap the whole site at
+      # RATE_LIMIT_PER_MINUTE. docker-compose.prod.yml turns this on because Caddy
+      # rewrites X-Forwarded-For rather than appending to it.
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-0}
+      FORWARDED_TRUSTED_HOPS: ${FORWARDED_TRUSTED_HOPS:-1}
+    restart: unless-stopped
+    healthcheck:
+      # Internal to the container; no host port required.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the client bundle at BUILD time, so it must be passed here and not
+        # set with `environment:`. It must be reachable by the BROWSER: use
+        # http://localhost:8000, never http://backend:8000 (that name only resolves
+        # inside the docker network).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

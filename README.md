@@ -59,7 +59,19 @@ Dark mode:
 
 Requires **Node.js 20+** and **Python 3.11+**. Two terminals.
 
-### Backend
+### With Docker
+
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+```
+
+Frontend <http://localhost:3000>, API <http://localhost:8000>. See [DEPLOY.md](DEPLOY.md)
+for configuration, production deployment and HTTPS.
+
+### Without Docker
+
+Backend:
 
 ```powershell
 cd backend

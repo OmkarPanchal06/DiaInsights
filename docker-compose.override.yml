@@ -1,0 +1,22 @@
+# Local development only. Compose loads this automatically for a plain
+# `docker compose up`, because no -f flags were given.
+#
+# It is IGNORED whenever you pass -f explicitly, so the production command
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# never picks these ports up.
+#
+# Ports are bound to 127.0.0.1 rather than 0.0.0.0 so the stack is reachable from the
+# host but not from the network -- relevant when developing on a shared machine or
+# over Wi-Fi.
+#
+# This file publishes no 80/443. Caddy is the only service that ever does, and only
+# via docker-compose.prod.yml.
+
+services:
+  backend:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  frontend:
+    ports:
+      - "127.0.0.1:3000:3000"
