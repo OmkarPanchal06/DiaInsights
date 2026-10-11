@@ -1,0 +1,16 @@
+{
+  "age_years": 52,
+  "sex": 1,
+  "height_cm": 168,
+  "weight_kg": 86,
+  "HighBP": 1,
+  "HighChol": 1,
+  "Smoker": 1,
+  "Stroke": 0,
+  "HeartDiseaseorAttack": 0,
+  "PhysActivity": 0,
+  "Fruits": 0,
+  "Veggies": 1,
+  "HvyAlcoholConsump": 0,
+  "AnyHealthcare": 1
+}
