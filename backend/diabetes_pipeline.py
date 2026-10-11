@@ -8,6 +8,14 @@ AGE_MID   = {1:21,2:27,3:32,4:37,5:42,6:47,7:52,8:57,9:62,10:67,11:72,12:77,13:8
 AGE_LABEL = {1:"18-24",2:"25-29",3:"30-34",4:"35-39",5:"40-44",6:"45-49",7:"50-54",
              8:"55-59",9:"60-64",10:"65-69",11:"70-74",12:"75-79",13:"80+"}
 
+# BMI banding. BINS must stay identical to what the model was trained with; pd.cut is
+# left-open/right-closed, so 18.5 lands in band 0, 25 in band 1, and so on.
+# Note: binning a *raw* BMI above 100 yields NaN, which is why preprocess() bands the
+# scaler-clipped value (bmi_c) instead. Do not band ctx["bmi"] directly.
+BMI_BINS = [0, 18.5, 25, 30, 35, 100]
+BMI_LABELS = ["Underweight", "Healthy weight", "Overweight",
+              "Obesity, class I", "Obesity, class II or higher"]
+
 LABEL = {"HighBP":"High blood pressure","HighChol":"High cholesterol","BMI":"Body mass index",
          "Smoker":"Smoking","Stroke":"Stroke history","HeartDiseaseorAttack":"Heart disease/attack",
          "PhysActivity":"Physical activity","Fruits":"Daily fruit","Veggies":"Daily vegetables",
@@ -48,6 +56,22 @@ def age_to_code(age):
     return 13
 
 
+def bmi_band(bmi_c):
+    """Band an already-clipped BMI. Returns (code, label)."""
+    code = int(pd.cut([bmi_c], BMI_BINS, labels=False)[0])
+    return code, BMI_LABELS[code]
+
+
+def format_feature(name, shown, age_code):
+    """Plain-language rendering of one feature value for display. Hoisted from explain()
+    so the API layer can reuse it for every feature, not just the top-k."""
+    if name == "BMI": return f"BMI {shown[name]}"
+    if name == "Age": return f"age group {AGE_LABEL[age_code]}"
+    if name == "Sex": return "Male" if shown[name] == 1 else "Female"
+    if name in BINARY or name in ("HighBP_HighChol",): return "Yes" if shown[name] == 1 else "No"
+    return f"{shown[name]:.3g}"
+
+
 class DiabetesAssistant:
     def __init__(self, model_path="model/xgb_final.json", scaler_path="model/minmax_scaler.pkl",
                  features_path="model/feature_names.json", config_path="model/pipeline_config.json"):
@@ -85,14 +109,14 @@ class DiabetesAssistant:
         r = {k: float(inp[k]) for k in BINARY}
         r.update({"Sex": float(inp["sex"]), "BMI": bmi_s, "Age": age_s})
         r["Age_mid"] = AGE_MID[code]
-        r["BMI_cat"] = pd.cut([bmi_c], [0, 18.5, 25, 30, 35, 100], labels=False)[0]
+        r["BMI_cat"] = pd.cut([bmi_c], BMI_BINS, labels=False)[0]
         r["CardioBurden"] = r["HighBP"] + r["HighChol"] + r["Stroke"] + r["HeartDiseaseorAttack"]
         r["LifestyleScore"] = r["PhysActivity"] + r["Fruits"] + r["Veggies"] - r["Smoker"] - r["HvyAlcoholConsump"]
         r["Age_BMI"] = age_s * bmi_s if self.cfg["age_bmi_mode"] == "scaled" else code * bmi_c
         r["HighBP_HighChol"] = r["HighBP"] * r["HighChol"]
 
         X = pd.DataFrame([r])[self.cols].astype(float)
-        return X, {"bmi": bmi, "age_code": code, "notes": notes}
+        return X, {"bmi": bmi, "bmi_c": bmi_c, "age_code": code, "notes": notes}
 
     def tier(self, p):
         return "LOW" if p < self.cfg["tier_low"] else ("HIGH" if p >= self.cfg["tier_high"] else "MODERATE")
@@ -101,7 +125,7 @@ class DiabetesAssistant:
         X, _ = self.preprocess(inp)
         return float(self.model.predict_proba(X)[0, 1])
 
-    def explain(self, inp, top_k=5):
+    def explain(self, inp, top_k=5, make_plot=True):
         X, ctx = self.preprocess(inp)
         sv = self.explainer(X)
         vals = sv.values[0]
@@ -110,21 +134,18 @@ class DiabetesAssistant:
         shown = X.iloc[0].copy()
         shown["BMI"] = round(ctx["bmi"], 1); shown["Age"] = ctx["age_code"]
 
-        def fmt(f):
-            if f == "BMI": return f"BMI {shown[f]}"
-            if f == "Age": return f"age group {AGE_LABEL[ctx['age_code']]}"
-            if f == "Sex": return "Male" if shown[f] == 1 else "Female"
-            if f in BINARY or f in ("HighBP_HighChol",): return "Yes" if shown[f] == 1 else "No"
-            return f"{shown[f]:.3g}"
+        displays = {f: format_feature(f, shown, ctx["age_code"]) for f in self.cols}
 
         top = contrib.reindex(contrib.abs().sort_values(ascending=False).index)[:top_k]
-        factors = [(LABEL.get(f, f), fmt(f), float(v)) for f, v in top.items()]
+        factors = [(LABEL.get(f, f), displays[f], float(v)) for f, v in top.items()]
 
-        exp = shap.Explanation(values=vals, base_values=sv.base_values[0],
-                               data=shown.values, feature_names=[LABEL.get(c, c) for c in self.cols])
-        shap.plots.waterfall(exp, max_display=10, show=False)
-        fig = plt.gcf()
-        return factors, contrib, fig
+        fig = None
+        if make_plot:
+            exp = shap.Explanation(values=vals, base_values=sv.base_values[0],
+                                   data=shown.values, feature_names=[LABEL.get(c, c) for c in self.cols])
+            shap.plots.waterfall(exp, max_display=10, show=False)
+            fig = plt.gcf()
+        return factors, contrib, displays, fig, float(sv.base_values[0])
 
     def recommend(self, inp, contrib, max_recs=4, weight_loss=0.05):
         inp = self.validate(inp)
@@ -152,9 +173,9 @@ class DiabetesAssistant:
         medical = [(k, MEDICAL[k]) for k in MEDICAL if inp[k] == 1 and contrib[k] > 0]
         return p0, recs, p_all, medical
 
-    def report(self, inp):
+    def report(self, inp, make_plot=True):
         X, ctx = self.preprocess(inp)
-        factors, contrib, fig = self.explain(inp)
+        factors, contrib, displays, fig, base_value = self.explain(inp, make_plot=make_plot)
         p0, recs, p_all, medical = self.recommend(inp, contrib)
         t = self.tier(p0)
 
@@ -185,4 +206,8 @@ class DiabetesAssistant:
         md += ["", "_Decision-support only, not medical advice. Check with a doctor before starting vigorous exercise, "
                    "especially with heart disease or stroke history._"]
         return {"score": p0, "tier": t, "factors": factors, "recs": recs, "fig": fig,
-                "markdown": "\n".join(md), "notes": ctx["notes"]}
+                "markdown": "\n".join(md), "notes": ctx["notes"],
+                # Previously computed but discarded; surfaced for the API layer.
+                "p_all": p_all, "medical": medical, "displays": displays,
+                "contrib": contrib, "base_value": base_value,
+                "bmi": ctx["bmi"], "bmi_c": ctx["bmi_c"], "age_code": ctx["age_code"]}
