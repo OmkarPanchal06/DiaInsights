@@ -29,6 +29,12 @@ services:
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-0}
       FORWARDED_TRUSTED_HOPS: ${FORWARDED_TRUSTED_HOPS:-1}
     restart: unless-stopped
+    # Cap log growth. Without this the json-file driver grows without bound.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     healthcheck:
       # Internal to the container; no host port required.
       test:
@@ -51,6 +57,11 @@ services:
         # inside the docker network).
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     depends_on:
       backend:
         condition: service_healthy

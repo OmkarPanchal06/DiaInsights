@@ -38,6 +38,13 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    # Caddy's runtime/error logs only; there is no access log. Rotate anyway so a
+    # misbehaving upstream cannot fill the disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       # Read by the Caddyfile as {$DOMAIN}.
       DOMAIN: ${DOMAIN:-localhost}

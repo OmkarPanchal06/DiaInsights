@@ -62,6 +62,11 @@ Decision-support only, NOT a diagnosis.
 - `api.client_ip()` reads X-Forwarded-For **from the right**, and only when
   `TRUST_PROXY_HEADERS` is on (default off). Entries left of our own proxy's entry are
   client-supplied and must never influence the key.
+- **Nothing logs request details by default.** The Caddyfile has no `log` block at all --
+  only runtime/error output, which carries no IP, path or headers. uvicorn runs
+  `--no-access-log`; Next logs startup and render errors only. Container logs are capped
+  at 10 MB x 3. CI asserts the resolved Caddy config has no access log: do not add a
+  `log` block without updating DEPLOY.md and that check.
 
 ## Backend notes
 - Never change `backend/model/` or the maths in `diabetes_pipeline.py` (`preprocess`,

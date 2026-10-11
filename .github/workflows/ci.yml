@@ -149,6 +149,42 @@ jobs:
       - name: Validate the Caddyfile
         run: docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" -e DOMAIN=example.com caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
 
+      # Access logging is off by default and must stay that way. Rather than grep the
+      # Caddyfile, adapt it and inspect the RESOLVED config: a `log` directive inside a
+      # site block materialises as a `logs` key on the HTTP server. This catches logging
+      # added anywhere, including from inside a snippet.
+      - name: Assert Caddy has no access log
+        env:
+          DOMAIN: example.com
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
+            -e DOMAIN=example.com \
+            caddy:2-alpine \
+            caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile --pretty \
+            > /tmp/caddy.json
+
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("/tmp/caddy.json", "utf8"));
+            const servers = (cfg.apps && cfg.apps.http && cfg.apps.http.servers) || {};
+            let failed = false;
+            for (const [name, server] of Object.entries(servers)) {
+              if (server.logs && server.logs.length > 0) {
+                console.error("FAIL: http server " + name + " defines " + server.logs.length + " log(s); access logging must stay off.");
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+            const count = Object.keys(servers).length;
+            if (count === 0) {
+              console.error("FAIL: no http servers found; the config did not adapt as expected.");
+              process.exit(1);
+            }
+            console.log("OK: " + count + " http server(s), none with access logging.");
+          '
+
 # End-to-end tests are intentionally not run here. They start both servers and
 # download Chromium, which is slow and flaky as a per-push gate. Run them locally
 # with `npm run test:e2e`, or add a separate job on a schedule or before release.

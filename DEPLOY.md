@@ -188,10 +188,53 @@ Tear down and return to plain development with `docker compose down` followed by
 
 ## Operations
 
-**Logs contain no patient data.** The backend runs uvicorn with `--no-access-log`, so
-nothing about any request reaches stdout. Request bodies are never logged. Caddy's log
-format is set to `console` explicitly so headers and bodies cannot be added later. The
-rate limiter stores only an IP and timestamps, in memory, discarded after a minute.
+**Logs contain no patient data, and by default no visit data either.**
+
+| Component | What it logs by default |
+|---|---|
+| **Caddy** | **No access log at all.** Only runtime and error output on stderr: TLS handshake failures, upstream connection errors, config reloads, panics. None of these contain a client IP, a path, or headers. |
+| **Backend** | uvicorn runs `--no-access-log`, so no request lines, no client IP, no path. Startup, shutdown and error messages only. Request bodies are never logged. |
+| **Frontend** | Next.js logs its startup banner and render/uncaught errors. No per-request lines — verified against the standalone production server. |
+
+The rate limiter additionally holds a client IP plus timestamps **in memory only**, for 60
+seconds, and discards them. It never writes them anywhere.
+
+Container logs are capped at 10 MB × 3 files per service via `logging.max-size` /
+`logging.max-file` in the compose files, so a misbehaving upstream cannot fill the disk.
+
+Note that this covers *the application*. Your hosting provider, DNS provider, load
+balancer and network operator keep their own records under their own policies.
+
+### If you need access logs
+
+Opt-in only, and **not validated in this repo** — no configuration in this project enables
+it, and CI deliberately fails if the Caddyfile starts emitting access logs.
+
+Adding a bare `log { output stdout }` does *not* give you a minimal record. Caddy's access
+log includes `remote_ip`, `client_ip`, the full URI **with its query string**, and the
+entire request headers object (User-Agent, Referer, Sec-\*, Accept-\*). Only `Cookie` and
+`Authorization` are blanked by default. For a health tool that is sensitive visit metadata.
+
+If you genuinely need traffic visibility, add this to the site block in `Caddyfile` and
+validate it yourself with `caddy validate` before deploying:
+
+```
+log {
+	output stdout
+	format filter {
+		wrap formatted "{method} {path} {status} {ts}" {
+			time_format "2006-01-02 15:04:05"
+		}
+	}
+}
+```
+
+`wrap formatted` is a whitelist: it emits only method, path, status and timestamp.
+`{path}` is Caddy's path-only placeholder, so the query string is excluded. No IP, no
+headers, no body.
+
+Prefer a whitelist like this over `format filter { fields { … delete } }`, which is a
+blacklist — a field you forget to delete is silently logged.
 
 **One worker, on purpose.** The rate limiter is an in-memory dict. N workers would mean
 N independent limiters and N× the effective limit. Move the limiter to Redis *before*

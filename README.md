@@ -40,6 +40,9 @@ plan to discuss with a doctor.
 - **Your answers are never stored.** No localStorage, no cookies, no analytics, no
   third parties. The assessment lives in memory only, so refreshing the page clears it.
   The single exception is your theme preference, stored under `theme`.
+- **The app itself stores nothing and logs no request details by default.** The backend
+  runs with access logging disabled, and the Caddy proxy in front of it records nothing
+  per request. Hosting providers and networks may keep their own records.
 - **Healthcare coverage is hidden from the factor list.** The model does use it, but it
   isn't a health condition or a habit, so we don't present it as one either way.
 - **We never call the score a probability or a diagnosis.**

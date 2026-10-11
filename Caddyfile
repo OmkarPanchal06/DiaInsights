@@ -33,11 +33,17 @@
 		-Server
 	}
 
-	log {
-		# Access logs record the request line and status only -- never a body.
-		# Default format already excludes headers and bodies; named explicitly here so
-		# nobody "helpfully" adds them later.
-		output stdout
-		format console
-	}
+	# NO access log, deliberately.
+	#
+	# With no `log` directive Caddy records nothing per request. Caddy still emits
+	# runtime and error logs to stderr -- TLS handshake failures, upstream connection
+	# errors, config reloads, panics -- none of which carry a client IP, a path or
+	# headers.
+	#
+	# Do not add `log { output stdout }` here expecting a minimal record. Caddy's access
+	# log records remote_ip, client_ip, the URI *including its query string*, and the
+	# whole request headers object (User-Agent, Referer, Sec-*, Accept-*). Only Cookie
+	# and Authorization are blanked by default. For a health tool that is sensitive
+	# visit metadata, so access logging must stay opt-in and deliberately scoped.
+	# See DEPLOY.md, "If you need access logs".
 }
